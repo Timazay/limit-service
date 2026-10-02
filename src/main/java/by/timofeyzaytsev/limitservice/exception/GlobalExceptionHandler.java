@@ -1,0 +1,264 @@
+package by.timofeyzaytsev.limitservice.exception;
+
+import by.timofeyzaytsev.limitservice.exception.dto.ErrorResponseDto;
+import jakarta.servlet.http.HttpServletRequest;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.core.MethodParameter;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.MatrixVariable;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+
+/**
+ * Renders failures as RFC 9457 problem documents.
+ *
+ * <p>Scope is deliberately narrow. Only two failures are mapped explicitly:
+ * constraint violations on controller method parameters, and business exceptions raised by
+ * the service layer. Everything else is left alone — Spring's own MVC failures carry their
+ * status and body in an {@link ErrorResponse}, and unexpected failures are converted by the
+ * catch-all. Adding more handlers here should be driven by an endpoint that actually rejects
+ * such a request, not by the length of the exception list.</p>
+ *
+ * <p>Spring Boot's {@code ProblemDetailsExceptionHandler} is registered at {@code @Order(0)},
+ * so this advice is ordered {@code -1} to be consulted first; otherwise the framework handler
+ * would win and the custom body below would never be produced.</p>
+ *
+ * <p>The {@code instance} member is set from the request URI, which lets a client
+ * correlate a failure with the exact call it made.</p>
+ *
+ * <p>The {@code type} member is left unset: there is no published documentation page to
+ * reference, and an invented URI would be worse than none. RFC 9457 treats an absent
+ * {@code type} as {@code about:blank}. Clients should key on {@code title} and
+ * {@code detail}, which are always present.</p>
+ */
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * A constraint on a controller method parameter was violated, for example
+     * {@code @Min(0) int page} on a {@code @RequestParam}.
+     *
+     * <p>This is a separate mechanism from {@code @Valid @RequestBody}: Spring validates
+     * annotated method arguments itself and reports failures as
+     * {@link HandlerMethodValidationException}. Without a handler for it the framework answers
+     * with a generic {@code "Validation Failure"} detail and no field breakdown, so this is the
+     * one validation case the API can currently produce.</p>
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ProblemDetail> handleMethodParameterValidation(
+            HandlerMethodValidationException ex,
+            WebRequest request) {
+
+        Map<String, List<String>> violations = new LinkedHashMap<>();
+        ex.visitResults(new ViolationCollector(violations));
+
+        // Cross-parameter constraints (for example @PasswordMatches) are not bound to a single
+        // field, so they are reported under a single key rather than mixed in with field errors.
+        List<String> crossParameterMessages = ex.getCrossParameterValidationResults().stream()
+                .map(MessageSourceResolvable::getDefaultMessage)
+                .toList();
+        if (!crossParameterMessages.isEmpty()) {
+            violations.put("request", crossParameterMessages);
+        }
+
+        String message = violations.entrySet().stream()
+                .map(entry -> entry.getKey() + ": " + String.join(" ", entry.getValue()))
+                .collect(Collectors.joining("; "));
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problemDetail.setTitle("Validation failed");
+        problemDetail.setDetail(message);
+        problemDetail.setProperty("errors", new ErrorResponseDto(message));
+        problemDetail.setInstance(instanceUri(request));
+
+        return ResponseEntity.badRequest().body(problemDetail);
+    }
+
+    /**
+     * Business exceptions: everything extending {@link ApiException} already carries
+     * a fully built {@link ProblemDetail}, so it only needs the {@code instance} member.
+     */
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<ProblemDetail> handleApiException(ApiException ex, WebRequest request) {
+        ProblemDetail problemDetail = ex.getBody();
+        problemDetail.setInstance(instanceUri(request));
+
+        if (problemDetail.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR.value()) {
+            log.error("Business failure on {}", request.getDescription(false), ex);
+        } else {
+            log.debug("Business failure on {}: {}", request.getDescription(false), problemDetail.getDetail());
+        }
+
+        return ResponseEntity.status(ex.getStatusCode()).body(problemDetail);
+    }
+
+    /**
+     * Handles everything this advice does not map explicitly.
+     *
+     * <p>Two cases matter. Spring's own MVC failures already carry the right status and body in
+     * their {@link ErrorResponse} implementation, so they are passed through with only
+     * {@code instance} filled in. Anything else is genuinely unexpected and becomes a 500 with a
+     * {@code traceId} and no internal details, so an unexpected failure never leaks internals to
+     * the caller.</p>
+     *
+     * <p>The distinction matters: because this advice runs before Spring Boot's handler,
+     * collapsing every unmatched exception into a 500 would turn a plain 404 or 415 into a server
+     * error.</p>
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ProblemDetail> handleUnexpected(Exception ex, HttpServletRequest request) {
+        if (ex instanceof ErrorResponse errorResponse) {
+            ProblemDetail problemDetail = errorResponse.getBody();
+            problemDetail.setInstance(URI.create(request.getRequestURI()));
+
+            return ResponseEntity.status(errorResponse.getStatusCode())
+                    .headers(errorResponse.getHeaders())
+                    .body(problemDetail);
+        }
+
+        String traceId = UUID.randomUUID().toString();
+
+        log.error("Unhandled exception, traceId={}", traceId, ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+        problemDetail.setTitle("Internal server error");
+        problemDetail.setDetail("Unexpected error occurred, contact support with trace id %s".formatted(traceId));
+        problemDetail.setProperty("traceId", traceId);
+        problemDetail.setInstance(URI.create(request.getRequestURI()));
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
+    }
+
+    /**
+     * Collects violations keyed by the name the client actually sent, not by the Java
+     * parameter name: {@code @RequestParam(name = "page")} binds to {@code page} even when the
+     * parameter itself is called something else. Falls back to the declared parameter name,
+     * which requires {@code -parameters} in the compiler configuration.
+     */
+    private static final class ViolationCollector implements HandlerMethodValidationException.Visitor {
+
+        private final Map<String, List<String>> violations;
+
+        private ViolationCollector(Map<String, List<String>> violations) {
+            this.violations = violations;
+        }
+
+        @Override
+        public void cookieValue(CookieValue cookieValue, ParameterValidationResult result) {
+            collect(cookieValue.name(), cookieValue.value(), result);
+        }
+
+        @Override
+        public void matrixVariable(MatrixVariable matrixVariable, ParameterValidationResult result) {
+            collect(matrixVariable.name(), matrixVariable.value(), result);
+        }
+
+        @Override
+        public void pathVariable(PathVariable pathVariable, ParameterValidationResult result) {
+            collect(pathVariable.name(), pathVariable.value(), result);
+        }
+
+        @Override
+        public void requestHeader(RequestHeader requestHeader, ParameterValidationResult result) {
+            collect(requestHeader.name(), requestHeader.value(), result);
+        }
+
+        @Override
+        public void requestParam(RequestParam requestParam, ParameterValidationResult result) {
+            collect(requestParam.name(), requestParam.value(), result);
+        }
+
+        @Override
+        public void other(ParameterValidationResult result) {
+            collect(null, null, result);
+        }
+
+        @Override
+        public void modelAttribute(ModelAttribute modelAttribute, ParameterErrors errors) {
+            errors.getAllErrors().forEach(error -> violations
+                    .computeIfAbsent(errors.getObjectName(), key -> new ArrayList<>())
+                    .add(error.getDefaultMessage()));
+        }
+
+        @Override
+        public void requestBody(RequestBody requestBody, ParameterErrors errors) {
+            modelAttribute(null, errors);
+        }
+
+        @Override
+        public void requestPart(RequestPart requestPart, ParameterErrors errors) {
+            String name = resolveName(requestPart.name(), null, errors.getMethodParameter());
+            errors.getAllErrors().forEach(error -> violations
+                    .computeIfAbsent(name, key -> new ArrayList<>())
+                    .add(error.getDefaultMessage()));
+        }
+
+        @Override
+        public void requestBodyValidationResult(RequestBody requestBody, ParameterValidationResult result) {
+            collect(null, null, result);
+        }
+
+        private void collect(String annotationName, String annotationValue, ParameterValidationResult result) {
+            String name = resolveName(annotationName, annotationValue, result.getMethodParameter());
+            result.getResolvableErrors().forEach(error -> violations
+                    .computeIfAbsent(name, key -> new ArrayList<>())
+                    .add(error.getDefaultMessage()));
+        }
+
+        private static String resolveName(
+                String annotationName,
+                String annotationValue,
+                MethodParameter parameter) {
+
+            if (StringUtils.hasText(annotationName)) {
+                return annotationName;
+            }
+            if (StringUtils.hasText(annotationValue)) {
+                return annotationValue;
+            }
+            return parameter.getParameterName();
+        }
+    }
+
+    /**
+     * Builds the {@code instance} member from the request path, so a client can correlate
+     * a failure with the exact call it made. Falls back to {@code about:blank} for the
+     * rare case when the request is not servlet based.
+     */
+    private URI instanceUri(WebRequest request) {
+        if (request instanceof ServletWebRequest servletWebRequest) {
+            return URI.create(servletWebRequest.getRequest().getRequestURI());
+        }
+        return URI.create("about:blank");
+    }
+}
