@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: Limit service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5434/limit_db
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yml
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false

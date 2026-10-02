@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-exchange-rates
+      author: Timofey Zaytsev
+      changes:
+        - createTable:
+            tableName: exchange_rates
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: currency_pair
+                  type: VARCHAR(7)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rate_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: close
+                  type: NUMERIC(19, 6)
+              - column:
+                  name: previous_close
+                  type: NUMERIC(19, 6)
+              - column:
+                  name: source
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            tableName: exchange_rates
+            columnNames: currency_pair, rate_date
+            constraintName: uq_exchange_rate_pair_date

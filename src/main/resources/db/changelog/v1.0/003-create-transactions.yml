@@ -1,0 +1,81 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-transactions
+      author: Timofey Zaytsev
+      changes:
+        - createTable:
+            tableName: transactions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: account_from
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: account_to
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: currency_shortname
+                  type: VARCHAR(3)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sum
+                  type: NUMERIC(19, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sum_usd
+                  type: NUMERIC(19, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expense_category
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: datetime
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: limit_exceeded
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: limit_id
+                  type: UUID
+              - column:
+                  name: exchange_rate_id
+                  type: UUID
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: transactions
+            baseColumnNames: limit_id
+            referencedTableName: limits
+            referencedColumnNames: id
+            constraintName: fk_tx_limit
+
+        - addForeignKeyConstraint:
+            baseTableName: transactions
+            baseColumnNames: exchange_rate_id
+            referencedTableName: exchange_rates
+            referencedColumnNames: id
+            constraintName: fk_tx_exchange_rate

@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-limits
+      author: Timofey Zaytsev
+      changes:
+        - createTable:
+            tableName: limits
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: expense_category
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: limit_sum
+                  type: NUMERIC(19, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: limit_datetime
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: limit_currency_shortname
+                  type: VARCHAR(3)
+                  defaultValue: USD
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
