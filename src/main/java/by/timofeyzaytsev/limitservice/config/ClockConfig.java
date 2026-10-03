@@ -1,16 +1,19 @@
 package by.timofeyzaytsev.limitservice.config;
 
+import by.timofeyzaytsev.limitservice.config.property.AppProperties;
 import java.time.Clock;
-import java.time.ZoneId;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@RequiredArgsConstructor
 public class ClockConfig {
 
+    private final AppProperties appProperties;
+
     @Bean
-    public Clock clock(@Value("${app.time-zone:Asia/Almaty}") String zoneId) {
-        return Clock.system(ZoneId.of(zoneId));
+    public Clock clock() {
+        return Clock.system(appProperties.timeZone());
     }
 }

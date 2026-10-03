@@ -16,7 +16,6 @@ import org.springframework.stereotype.Repository;
 public interface LimitRepository extends JpaRepository<Limit, UUID> {
 
     /**
-     * То же, но с пессимистичной блокировкой строки.
      * Используется для того, чтобы два параллельных
      * запроса не увидели один и тот же остаток лимита.
      */

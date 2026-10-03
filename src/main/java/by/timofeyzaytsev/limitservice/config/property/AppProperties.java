@@ -6,5 +6,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public record AppProperties(
     ZoneId timeZone,
-    LimitProperties limit
+    LimitProperties limit,
+    ExchangeRateProperties exchangeRate
 ) {}

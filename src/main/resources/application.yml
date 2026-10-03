@@ -28,4 +28,13 @@ app:
     default-sum: 1000.00
     default-currency: USD
   exchange-rate:
-    provider: stub
+    provider: twelvedata   # stub | twelvedata
+    twelvedata:
+      base-url: https://api.twelvedata.com
+      api-key: ${TWELVEDATA_API_KEY}
+      connect-timeout: 5s
+      read-timeout: 10s
+      max-retries: 3
+      retry-delay: 1s
+      retry-multiplier: 2.0
+      retry-max-delay: 10s
