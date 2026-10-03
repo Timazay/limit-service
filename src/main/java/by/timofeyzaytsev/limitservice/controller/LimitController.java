@@ -1,11 +1,17 @@
 package by.timofeyzaytsev.limitservice.controller;
 
+import by.timofeyzaytsev.limitservice.dto.request.LimitRequest;
 import by.timofeyzaytsev.limitservice.dto.response.LimitResponse;
 import by.timofeyzaytsev.limitservice.service.LimitService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,5 +29,12 @@ public class LimitController {
         @RequestParam(defaultValue = "20") @Min(1) int size
     ) {
         return limitService.findAll(page, size);
+    }
+
+    @PostMapping
+    public ResponseEntity<LimitResponse> create(@Valid @RequestBody LimitRequest request) {
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(limitService.create(request));
     }
 }

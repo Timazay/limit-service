@@ -8,5 +8,7 @@ import org.mapstruct.Mapper;
 @Mapper(componentModel = "spring")
 public interface LimitMapper {
 
+    LimitResponse toLimitResponse(Limit limit);
+
     List<LimitResponse> toResponseList(List<Limit> limits);
 }
