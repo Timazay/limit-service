@@ -5,10 +5,16 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-public record LimitResponse(
+public record TransactionResponse(
     UUID id,
+    String accountFrom,
+    String accountTo,
+    String currencyShortname,
+    BigDecimal sum,
+    BigDecimal sumUsd,
     ExpenseCategory expenseCategory,
-    BigDecimal limitSum,
-    OffsetDateTime limitDatetime,
-    String limitCurrencyShortname
-) {}
+    OffsetDateTime datetime,
+    boolean limitExceeded
+) {
+
+}

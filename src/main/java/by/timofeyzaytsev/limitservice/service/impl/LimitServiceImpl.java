@@ -1,10 +1,10 @@
 package by.timofeyzaytsev.limitservice.service.impl;
 
+import by.timofeyzaytsev.limitservice.config.property.AppProperties;
 import by.timofeyzaytsev.limitservice.dto.request.LimitRequest;
 import by.timofeyzaytsev.limitservice.dto.response.LimitResponse;
 import by.timofeyzaytsev.limitservice.mapper.LimitMapper;
 import by.timofeyzaytsev.limitservice.model.Limit;
-import by.timofeyzaytsev.limitservice.model.enums.Currency;
 import by.timofeyzaytsev.limitservice.repository.LimitRepository;
 import by.timofeyzaytsev.limitservice.service.LimitService;
 import java.math.BigDecimal;
@@ -23,8 +23,7 @@ public class LimitServiceImpl implements LimitService {
     private final LimitRepository limitRepository;
     private final LimitMapper limitMapper;
     private final Clock clock;
-
-    private final static BigDecimal DEFAULT_LIMIT_SUM = BigDecimal.valueOf(1000);
+    private final AppProperties appProperties;
 
     @Override
     public List<LimitResponse> findAll(int page, int size) {
@@ -43,7 +42,7 @@ public class LimitServiceImpl implements LimitService {
             .expenseCategory(request.expenseCategory())
             .limitSum(validateLimitSum(request))
             .limitDatetime(OffsetDateTime.now(clock))
-            .limitCurrencyShortname(Currency.USD)
+            .limitCurrencyShortname(appProperties.limit().defaultCurrency())
             .build();
 
         return limitMapper
@@ -54,6 +53,6 @@ public class LimitServiceImpl implements LimitService {
     }
 
     private BigDecimal validateLimitSum(LimitRequest request) {
-        return request.limitSum() == null ? DEFAULT_LIMIT_SUM : request.limitSum();
+        return request.limitSum() == null ? appProperties.limit().defaultSum() : request.limitSum();
     }
 }

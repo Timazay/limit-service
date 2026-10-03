@@ -23,4 +23,9 @@ spring:
         format_sql: true
     open-in-view: false
 app:
-  time-zone: ${TIME_ZONE:Asia/Almaty}
+  time-zone: Asia/Almaty
+  limit:
+    default-sum: 1000.00
+    default-currency: USD
+  exchange-rate:
+    provider: stub
