@@ -22,3 +22,5 @@ spring:
       hibernate:
         format_sql: true
     open-in-view: false
+app:
+  time-zone: ${TIME_ZONE:Asia/Almaty}
