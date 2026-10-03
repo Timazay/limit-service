@@ -2,6 +2,8 @@ databaseChangeLog:
   - changeSet:
       id: 002-create-limits
       author: Timofey Zaytsev
+      preConditions:
+        - onFail: MARK_RAN
       changes:
         - createTable:
             tableName: limits

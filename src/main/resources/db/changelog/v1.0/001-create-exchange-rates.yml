@@ -2,6 +2,8 @@ databaseChangeLog:
   - changeSet:
       id: 001-create-exchange-rates
       author: Timofey Zaytsev
+      preConditions:
+        - onFail: MARK_RAN
       changes:
         - createTable:
             tableName: exchange_rates

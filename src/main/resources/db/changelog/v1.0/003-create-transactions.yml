@@ -2,6 +2,8 @@ databaseChangeLog:
   - changeSet:
       id: 003-create-transactions
       author: Timofey Zaytsev
+      preConditions:
+        - onFail: MARK_RAN
       changes:
         - createTable:
             tableName: transactions
@@ -14,12 +16,12 @@ databaseChangeLog:
                     nullable: false
               - column:
                   name: account_from
-                  type: VARCHAR(10)
+                  type: UUID
                   constraints:
                     nullable: false
               - column:
                   name: account_to
-                  type: VARCHAR(10)
+                  type: UUID
                   constraints:
                     nullable: false
               - column:

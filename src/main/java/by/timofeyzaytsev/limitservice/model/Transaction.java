@@ -1,6 +1,5 @@
 package by.timofeyzaytsev.limitservice.model;
 
-import by.timofeyzaytsev.limitservice.model.enums.Currency;
 import by.timofeyzaytsev.limitservice.model.enums.ExpenseCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -38,14 +37,13 @@ public class Transaction {
     private UUID id;
 
     @Column(name = "account_from", nullable = false, length = 10)
-    private String accountFrom;
+    private UUID accountFrom;
 
     @Column(name = "account_to", nullable = false, length = 10)
-    private String accountTo;
+    private UUID accountTo;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "currency_shortname", nullable = false, length = 3)
-    private Currency currencyShortname;
+    private String currencyShortname;
 
     @Column(name = "sum", nullable = false, precision = 19, scale = 2)
     private BigDecimal sum;
