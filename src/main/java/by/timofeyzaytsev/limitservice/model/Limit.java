@@ -1,6 +1,5 @@
 package by.timofeyzaytsev.limitservice.model;
 
-import by.timofeyzaytsev.limitservice.model.enums.Currency;
 import by.timofeyzaytsev.limitservice.model.enums.ExpenseCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -19,6 +18,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.Value;
 
 @Entity
 @Table(name = "limits")
@@ -43,9 +43,8 @@ public class Limit {
     @Column(name = "limit_datetime", nullable = false)
     private OffsetDateTime limitDatetime;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "limit_currency_shortname", nullable = false, length = 3)
-    private Currency limitCurrencyShortname;
+    private String limitCurrencyShortname;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -54,9 +53,6 @@ public class Limit {
     void onCreate() {
         if (createdAt == null) {
             createdAt = OffsetDateTime.now();
-        }
-        if (limitCurrencyShortname == null) {
-            limitCurrencyShortname = Currency.USD;
         }
     }
 }
