@@ -8,12 +8,14 @@ import by.timofeyzaytsev.limitservice.model.Limit;
 import by.timofeyzaytsev.limitservice.model.Transaction;
 import by.timofeyzaytsev.limitservice.repository.LimitRepository;
 import by.timofeyzaytsev.limitservice.repository.TransactionRepository;
+import by.timofeyzaytsev.limitservice.repository.projection.MonthLimitProjection;
 import by.timofeyzaytsev.limitservice.service.TransactionProcessor;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.TemporalAdjusters;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,33 +30,35 @@ public class TransactionProcessorImpl implements TransactionProcessor {
     private final AppProperties props;
     private final Clock clock;
 
+    /**
+     * Порядок шагов обязателен: сначала блокировка месяца, и только потом
+     * чтение остатка. Обратный порядок оставил бы окно, в котором второй
+     * параллельный запрос прочитал бы ту же сумму, что и первый.
+     */
     @Override
     @Transactional
-    public TransactionResponse record(TransactionRequest request, BigDecimal sumUsd, ZonedDateTime zoned) {
+    public TransactionResponse record(
+            TransactionRequest request,
+            BigDecimal sumUsd,
+            ZonedDateTime zoned) {
+
         OffsetDateTime monthStart = monthStartOf(zoned);
-        OffsetDateTime monthEnd = monthStart.plusMonths(1);
 
         transactionRepository.lockMonth(lockKey(request, monthStart));
 
-        Limit limit = limitRepository
-            .findEffectiveLimit(
-                request.accountFrom(),
-                request.expenseCategory(),
-                request.datetime()
-            )
-            .orElse(null);
-
-        BigDecimal limitSum = limit != null
-            ? limit.getLimitSum()
-            : props.limit().defaultSum();
-
-        BigDecimal spent = transactionRepository.sumExpensesForPeriod(
-            request.accountFrom(), request.expenseCategory(), monthStart, monthEnd
+        MonthLimitProjection month = transactionRepository.resolveMonthLimit(
+            request.accountFrom(),
+            request.expenseCategory().name(),
+            request.datetime(),
+            monthStart,
+            monthStart.plusMonths(1),
+            props.limit().defaultSum()
         );
 
-        boolean exceeded = spent.add(sumUsd).compareTo(limitSum) > 0;
+        boolean exceeded = month.getSpent().add(sumUsd).compareTo(month.getLimitSum()) > 0;
 
-        Transaction transaction = buildTransaction(request, sumUsd, limit, exceeded);
+        Transaction transaction = buildTransaction(
+            request, sumUsd, limit(month.getLimitId()), exceeded);
 
         return transactionMapper.toTransactionResponse(transactionRepository.save(transaction));
     }
@@ -79,11 +83,22 @@ public class TransactionProcessorImpl implements TransactionProcessor {
         return request.accountFrom() + ":" + request.expenseCategory() + ":" + monthStart.toLocalDate();
     }
 
+    /**
+     * Ссылка на лимит достаётся как прокси по идентификатору: колонка
+     * {@code limit_id} заполняется сама, а сам лимит при этом не читается —
+     * в ответе он не участвует. Действующего лимита в базе может не оказаться
+     * (установленная строка удалена), тогда ссылка остаётся пустой.
+     */
+    private Limit limit(UUID limitId) {
+        return limitId == null ? null : limitRepository.getReferenceById(limitId);
+    }
+
     private Transaction buildTransaction(
         TransactionRequest request,
         BigDecimal sumUsd,
         Limit limit,
-        boolean exceeded) {
+        boolean exceeded
+    ) {
 
         return Transaction.builder()
             .accountFrom(request.accountFrom())
