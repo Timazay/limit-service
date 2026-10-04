@@ -4,6 +4,7 @@ import by.timofeyzaytsev.limitservice.config.property.AppProperties;
 import by.timofeyzaytsev.limitservice.dto.request.TransactionRequest;
 import by.timofeyzaytsev.limitservice.dto.response.TransactionResponse;
 import by.timofeyzaytsev.limitservice.mapper.TransactionMapper;
+import by.timofeyzaytsev.limitservice.model.ExchangeRate;
 import by.timofeyzaytsev.limitservice.model.Limit;
 import by.timofeyzaytsev.limitservice.model.Transaction;
 import by.timofeyzaytsev.limitservice.repository.LimitRepository;
@@ -40,7 +41,8 @@ public class TransactionProcessorImpl implements TransactionProcessor {
     public TransactionResponse record(
             TransactionRequest request,
             BigDecimal sumUsd,
-            ZonedDateTime zoned) {
+            ZonedDateTime zoned,
+            ExchangeRate exchangeRate) {
 
         OffsetDateTime monthStart = monthStartOf(zoned);
 
@@ -58,7 +60,7 @@ public class TransactionProcessorImpl implements TransactionProcessor {
         boolean exceeded = month.getSpent().add(sumUsd).compareTo(month.getLimitSum()) > 0;
 
         Transaction transaction = buildTransaction(
-            request, sumUsd, limit(month.getLimitId()), exceeded);
+            request, sumUsd, limit(month.getLimitId()), exchangeRate, exceeded);
 
         return transactionMapper.toTransactionResponse(transactionRepository.save(transaction));
     }
@@ -97,6 +99,7 @@ public class TransactionProcessorImpl implements TransactionProcessor {
         TransactionRequest request,
         BigDecimal sumUsd,
         Limit limit,
+        ExchangeRate exchangeRate,
         boolean exceeded
     ) {
 
@@ -110,6 +113,7 @@ public class TransactionProcessorImpl implements TransactionProcessor {
             .datetime(request.datetime())
             .limitExceeded(exceeded)
             .limit(limit)
+            .exchangeRate(exchangeRate)
             .createdAt(OffsetDateTime.now(clock))
             .build();
     }

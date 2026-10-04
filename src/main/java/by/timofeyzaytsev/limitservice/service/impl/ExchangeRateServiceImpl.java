@@ -7,6 +7,7 @@ import by.timofeyzaytsev.limitservice.exception.BadGatewayException;
 import by.timofeyzaytsev.limitservice.model.ExchangeRate;
 import by.timofeyzaytsev.limitservice.repository.ExchangeRateRepository;
 import by.timofeyzaytsev.limitservice.service.ExchangeRateService;
+import by.timofeyzaytsev.limitservice.service.ResolvedRate;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -49,16 +50,17 @@ public class ExchangeRateServiceImpl implements ExchangeRateService {
     private final Clock clock;
 
     @Override
-    public BigDecimal getRate(String currency, LocalDate date) {
+    public ResolvedRate resolve(String currency, LocalDate date) {
         String normalized = currency.toUpperCase(Locale.ROOT);
 
         if (USD.equals(normalized)) {
-            return BigDecimal.ONE;
+            return new ResolvedRate(BigDecimal.ONE, null);
         }
 
         String pair = USD + "/" + normalized;
 
         return storedRate(pair, date)
+            .map(ResolvedRate::fromStored)
             .orElseGet(() -> fetchAndStore(pair, date));
     }
 
@@ -67,7 +69,7 @@ public class ExchangeRateServiceImpl implements ExchangeRateService {
      * он медленный и платный, и держать соединение с базой на его время
      * незачем.
      */
-    private BigDecimal fetchAndStore(String pair, LocalDate date) {
+    private ResolvedRate fetchAndStore(String pair, LocalDate date) {
         RateQuote quote = exchangeRateProvider.fetchQuote(pair, date);
 
         if (quote == null || quote.rate() == null || quote.rate().signum() <= 0) {
@@ -83,7 +85,9 @@ public class ExchangeRateServiceImpl implements ExchangeRateService {
             .createdAt(OffsetDateTime.now(clock))
             .build();
 
-        return store(pair, date, rate).effectiveRate();
+        ExchangeRate stored = store(pair, date, rate);
+
+        return new ResolvedRate(stored.effectiveRate(), stored);
     }
 
     /**
@@ -103,10 +107,9 @@ public class ExchangeRateServiceImpl implements ExchangeRateService {
         }
     }
 
-    private Optional<BigDecimal> storedRate(String pair, LocalDate date) {
+    private Optional<ExchangeRate> storedRate(String pair, LocalDate date) {
         return exchangeRateRepository
             .findByCurrencyPairAndRateDate(pair, date)
-            .map(ExchangeRate::effectiveRate)
-            .filter(rate -> rate.signum() > 0);
+            .filter(stored -> stored.effectiveRate() != null && stored.effectiveRate().signum() > 0);
     }
 }

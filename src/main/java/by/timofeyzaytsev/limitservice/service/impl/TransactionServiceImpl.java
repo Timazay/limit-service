@@ -3,8 +3,8 @@ package by.timofeyzaytsev.limitservice.service.impl;
 import by.timofeyzaytsev.limitservice.config.property.AppProperties;
 import by.timofeyzaytsev.limitservice.dto.request.TransactionRequest;
 import by.timofeyzaytsev.limitservice.dto.response.TransactionResponse;
-import by.timofeyzaytsev.limitservice.exception.BadGatewayException;
 import by.timofeyzaytsev.limitservice.service.ExchangeRateService;
+import by.timofeyzaytsev.limitservice.service.ResolvedRate;
 import by.timofeyzaytsev.limitservice.service.TransactionProcessor;
 import by.timofeyzaytsev.limitservice.service.TransactionService;
 import by.timofeyzaytsev.limitservice.utils.MoneyUtils;
@@ -31,23 +31,13 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionResponse create(TransactionRequest request) {
         ZonedDateTime zoned = request.datetime().atZoneSameInstant(props.timeZone());
 
-        BigDecimal sumUsd = MoneyUtils.divide(MoneyUtils.scale(request.sum()), rate(request, zoned));
+        // Отсутствующий или нулевой курс отсекает сам сервис курсов: без него
+        // сумма в USD попала бы в базу неверной.
+        ResolvedRate resolved = exchangeRateService.resolve(
+            request.currencyShortname(), zoned.toLocalDate());
 
-        return transactionProcessor.record(request, sumUsd, zoned);
-    }
+        BigDecimal sumUsd = MoneyUtils.divide(MoneyUtils.scale(request.sum()), resolved.rate());
 
-    /**
-     * Курс нулевой или отсутствует — делить на него нельзя, а принять
-     * транзакцию без курса нельзя: сумма в USD попала бы в базу неверной.
-     */
-    private BigDecimal rate(TransactionRequest request, ZonedDateTime zoned) {
-        BigDecimal rate = exchangeRateService.getRate(request.currencyShortname(), zoned.toLocalDate());
-
-        if (rate == null || rate.signum() <= 0) {
-            throw new BadGatewayException(
-                "Exchange rate for " + request.currencyShortname() + " is not available");
-        }
-
-        return rate;
+        return transactionProcessor.record(request, sumUsd, zoned, resolved.exchangeRate());
     }
 }
