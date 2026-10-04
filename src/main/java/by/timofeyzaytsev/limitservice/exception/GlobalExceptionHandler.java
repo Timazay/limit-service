@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.MatrixVariable;
@@ -90,6 +91,44 @@ public class GlobalExceptionHandler {
         if (!crossParameterMessages.isEmpty()) {
             violations.put("request", crossParameterMessages);
         }
+
+        return validationProblem(violations, request);
+    }
+
+    /**
+     * The same validation applied to a {@code @Valid @RequestBody} argument. Spring reports
+     * these as field errors and would otherwise answer with a bare
+     * {@code "Invalid request content."} detail, listing none of the offending fields.
+     *
+     * <p>Keyed by field name, the same as for method parameters, so a client parses one
+     * shape regardless of which argument was rejected.</p>
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ProblemDetail> handleRequestBodyValidation(
+            MethodArgumentNotValidException ex,
+            WebRequest request) {
+
+        Map<String, List<String>> violations = new LinkedHashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error -> violations
+                .computeIfAbsent(error.getField(), key -> new ArrayList<>())
+                .add(error.getDefaultMessage()));
+
+        // Field-level constraints cannot catch everything: a constraint written on the record
+        // itself is reported without a field, and would otherwise be dropped silently.
+        ex.getBindingResult().getGlobalErrors().forEach(error -> violations
+                .computeIfAbsent(error.getObjectName(), key -> new ArrayList<>())
+                .add(error.getDefaultMessage()));
+
+        return validationProblem(violations, request);
+    }
+
+    /**
+     * Renders collected violations as one 400 document: a readable {@code detail} for a
+     * human and a machine-readable {@code errors} member for the client.
+     */
+    private ResponseEntity<ProblemDetail> validationProblem(
+            Map<String, List<String>> violations,
+            WebRequest request) {
 
         String message = violations.entrySet().stream()
                 .map(entry -> entry.getKey() + ": " + String.join(" ", entry.getValue()))
