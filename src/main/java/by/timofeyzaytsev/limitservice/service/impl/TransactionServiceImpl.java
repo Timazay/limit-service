@@ -39,12 +39,10 @@ public class TransactionServiceImpl implements TransactionService {
             .divide(rate, MoneyUtils.SCALE, MoneyUtils.ROUNDING);
 
         ZonedDateTime zoned = request.datetime().atZoneSameInstant(props.timeZone());
-        OffsetDateTime monthStart = zoned
-            .with(TemporalAdjusters.firstDayOfMonth())
-            .toLocalDate()
-            .atStartOfDay(props.timeZone())
-            .toOffsetDateTime();
+        OffsetDateTime monthStart = monthStartOf(zoned);
         OffsetDateTime monthEnd = monthStart.plusMonths(1);
+
+        transactionRepository.lockMonth(lockKey(request, monthStart));
 
         Limit limit = limitRepository
             .findEffectiveLimit(
@@ -67,6 +65,26 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = buildTransaction(request, sumUsd, limit, exceeded);
 
         return transactionMapper.toTransactionResponse(transactionRepository.save(transaction));
+    }
+
+    /**
+     * Первый день месяца в часовом поясе сервиса: транзакция на границе
+     * полуночи иначе может попасть в соседний месяц.
+     */
+    private OffsetDateTime monthStartOf(ZonedDateTime zoned) {
+        return zoned
+            .with(TemporalAdjusters.firstDayOfMonth())
+            .toLocalDate()
+            .atStartOfDay(props.timeZone())
+            .toOffsetDateTime();
+    }
+
+    /**
+     * Остаток лимита общий для (клиент, категория, месяц), поэтому сериализуем
+     * только этот ключ: параллельные транзакции других клиентов ждать не будут.
+     */
+    private String lockKey(TransactionRequest request, OffsetDateTime monthStart) {
+        return request.accountFrom() + ":" + request.expenseCategory() + ":" + monthStart.toLocalDate();
     }
 
     private Transaction buildTransaction(

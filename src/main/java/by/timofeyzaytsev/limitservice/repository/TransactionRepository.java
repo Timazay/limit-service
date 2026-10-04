@@ -30,4 +30,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
         @Param("from") OffsetDateTime from,
         @Param("to") OffsetDateTime to
     );
+
+    /**
+     * Блокирует (клиент, категория, месяц) до конца текущей транзакции,
+     * чтобы два параллельных запроса не увидели один и тот же остаток лимита.
+     *
+     * <p>Блокировка на уровне строки тут не годится: её нельзя взять на
+     * агрегате, а остаток — это SUM. Advisory lock берётся на произвольном
+     * ключе и снимается при commit или rollback, то есть держится ровно
+     * столько, сколько длится расчёт остатка и запись транзакции.</p>
+     *
+     * <p>Ключ приходит строкой, поэтому коллизия хеша может лишь лишний раз
+     * заблокировать чужой ряд: на корректность результата это не влияет.</p>
+     */
+    @Query(value = "SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))", nativeQuery = true)
+    void lockMonth(@Param("key") String key);
 }
