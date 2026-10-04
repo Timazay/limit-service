@@ -5,6 +5,7 @@ import by.timofeyzaytsev.limitservice.dto.response.LimitResponse;
 import by.timofeyzaytsev.limitservice.service.LimitService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,10 +26,11 @@ public class LimitController {
 
     @GetMapping
     public List<LimitResponse> getAll(
+        @RequestParam @Pattern(regexp = "\\d{10}", message = "accountFrom must be 10 digits") String accountFrom,
         @RequestParam(defaultValue = "0") @Min(0) int page,
         @RequestParam(defaultValue = "20") @Min(1) int size
     ) {
-        return limitService.findAll(page, size);
+        return limitService.findAll(accountFrom, page, size);
     }
 
     @PostMapping

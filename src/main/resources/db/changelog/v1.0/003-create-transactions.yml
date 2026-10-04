@@ -16,12 +16,12 @@ databaseChangeLog:
                     nullable: false
               - column:
                   name: account_from
-                  type: UUID
+                  type: VARCHAR(10)
                   constraints:
                     nullable: false
               - column:
                   name: account_to
-                  type: UUID
+                  type: VARCHAR(10)
                   constraints:
                     nullable: false
               - column:
@@ -81,3 +81,14 @@ databaseChangeLog:
             referencedTableName: exchange_rates
             referencedColumnNames: id
             constraintName: fk_tx_exchange_rate
+
+        - createIndex:
+            tableName: transactions
+            indexName: idx_transactions_account_period
+            columns:
+              - column:
+                  name: account_from
+              - column:
+                  name: expense_category
+              - column:
+                  name: datetime

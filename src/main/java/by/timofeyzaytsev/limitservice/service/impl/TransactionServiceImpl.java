@@ -47,7 +47,11 @@ public class TransactionServiceImpl implements TransactionService {
         OffsetDateTime monthEnd = monthStart.plusMonths(1);
 
         Limit limit = limitRepository
-            .findLatestBeforeForUpdate(request.expenseCategory(), request.datetime())
+            .findEffectiveLimit(
+                request.accountFrom(),
+                request.expenseCategory(),
+                request.datetime()
+            )
             .orElse(null);
 
         BigDecimal limitSum = limit != null
@@ -55,7 +59,7 @@ public class TransactionServiceImpl implements TransactionService {
             : props.limit().defaultSum();
 
         BigDecimal spent = transactionRepository.sumExpensesForPeriod(
-            request.expenseCategory(), monthStart, monthEnd
+            request.accountFrom(), request.expenseCategory(), monthStart, monthEnd
         );
 
         boolean exceeded = spent.add(sumUsd).compareTo(limitSum) > 0;

@@ -18,7 +18,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import lombok.Value;
 
 @Entity
 @Table(name = "limits")
@@ -32,6 +31,9 @@ public class Limit {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @Column(name = "account_from", nullable = false, length = 10)
+    private String accountFrom;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "expense_category", nullable = false, length = 20)

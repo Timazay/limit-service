@@ -37,10 +37,10 @@ public class Transaction {
     private UUID id;
 
     @Column(name = "account_from", nullable = false, length = 10)
-    private UUID accountFrom;
+    private String accountFrom;
 
     @Column(name = "account_to", nullable = false, length = 10)
-    private UUID accountTo;
+    private String accountTo;
 
     @Column(name = "currency_shortname", nullable = false, length = 3)
     private String currencyShortname;

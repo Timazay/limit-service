@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record LimitResponse(
     UUID id,
+    String accountFrom,
     ExpenseCategory expenseCategory,
     BigDecimal limitSum,
     OffsetDateTime limitDatetime,

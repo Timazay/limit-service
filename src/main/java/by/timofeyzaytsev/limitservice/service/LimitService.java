@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface LimitService {
 
-    List<LimitResponse> findAll(int page, int size);
+    List<LimitResponse> findAll(String accountFrom, int page, int size);
 
     LimitResponse create(LimitRequest request);
 }

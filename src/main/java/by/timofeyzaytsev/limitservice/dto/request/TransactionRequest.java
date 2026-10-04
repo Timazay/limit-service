@@ -2,20 +2,23 @@ package by.timofeyzaytsev.limitservice.dto.request;
 
 import by.timofeyzaytsev.limitservice.model.enums.ExpenseCategory;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.UUID;
 
 public record TransactionRequest(
-    @NotNull(message = "accountFrom is required")
-    UUID accountFrom,
+    @NotBlank(message = "accountFrom is required")
+    @Pattern(regexp = "\\d{10}", message = "accountFrom must be 10 digits")
+    String accountFrom,
 
-    @NotNull(message = "accountTo is required")
-    UUID accountTo,
+    @NotBlank(message = "accountTo is required")
+    @Pattern(regexp = "\\d{10}", message = "accountTo must be 10 digits")
+    String accountTo,
 
-    @NotNull(message = "currencyShortname is required")
+    @NotBlank(message = "currencyShortname is required")
     @Size(min = 3, max = 3, message = "currencyShortname must be exactly 3 characters")
     String currencyShortname,
 

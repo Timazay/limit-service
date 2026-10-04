@@ -26,23 +26,25 @@ public class LimitServiceImpl implements LimitService {
     private final AppProperties appProperties;
 
     @Override
-    public List<LimitResponse> findAll(int page, int size) {
+    public List<LimitResponse> findAll(String accountFrom, int page, int size) {
         Sort sort = Sort.by(Sort.Direction.DESC, "limitDatetime");
 
-        List<Limit> limits = limitRepository
-            .findAll(PageRequest.of(page, size, sort))
-            .getContent();
-
-        return limitMapper.toResponseList(limits);
+        return limitMapper.toResponseList(
+            limitRepository
+                .findByAccountFrom(accountFrom, PageRequest.of(page, size, sort))
+                .getContent()
+        );
     }
 
     @Override
     public LimitResponse create(LimitRequest request) {
         Limit limit = Limit.builder()
+            .accountFrom(request.accountFrom())
             .expenseCategory(request.expenseCategory())
             .limitSum(validateLimitSum(request))
             .limitDatetime(OffsetDateTime.now(clock))
             .limitCurrencyShortname(appProperties.limit().defaultCurrency())
+            .createdAt(OffsetDateTime.now(clock))
             .build();
 
         return limitMapper
