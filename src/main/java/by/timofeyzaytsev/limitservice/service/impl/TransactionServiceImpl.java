@@ -1,108 +1,53 @@
 package by.timofeyzaytsev.limitservice.service.impl;
 
-import by.timofeyzaytsev.limitservice.client.ExchangeRateProvider;
 import by.timofeyzaytsev.limitservice.config.property.AppProperties;
 import by.timofeyzaytsev.limitservice.dto.request.TransactionRequest;
 import by.timofeyzaytsev.limitservice.dto.response.TransactionResponse;
-import by.timofeyzaytsev.limitservice.mapper.TransactionMapper;
-import by.timofeyzaytsev.limitservice.model.Limit;
-import by.timofeyzaytsev.limitservice.model.Transaction;
-import by.timofeyzaytsev.limitservice.repository.LimitRepository;
-import by.timofeyzaytsev.limitservice.repository.TransactionRepository;
+import by.timofeyzaytsev.limitservice.exception.BadGatewayException;
+import by.timofeyzaytsev.limitservice.service.ExchangeRateService;
+import by.timofeyzaytsev.limitservice.service.TransactionProcessor;
 import by.timofeyzaytsev.limitservice.service.TransactionService;
 import by.timofeyzaytsev.limitservice.utils.MoneyUtils;
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
-import java.time.temporal.TemporalAdjusters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Приём транзакции. Транзакции БД здесь намеренно нет: внешний запрос курса
+ * идёт первым, а транзакционная часть вынесена в TransactionProcessor.
+ * Иначе соединение с PostgreSQL удерживалось бы на всё время запроса во
+ * внешний API вместе с его таймаутами и ретраями.
+ */
 @Service
 @RequiredArgsConstructor
 public class TransactionServiceImpl implements TransactionService {
 
-    private final TransactionRepository transactionRepository;
-    private final LimitRepository limitRepository;
-    private final ExchangeRateProvider exchangeRateProvider;
+    private final ExchangeRateService exchangeRateService;
+    private final TransactionProcessor transactionProcessor;
     private final AppProperties props;
-    private final TransactionMapper transactionMapper;
 
-    @Transactional
+    @Override
     public TransactionResponse create(TransactionRequest request) {
-        BigDecimal rate = exchangeRateProvider.getRate(
-            request.currencyShortname(),
-            request.datetime().atZoneSameInstant(props.timeZone()).toLocalDate()
-        );
-        BigDecimal sumUsd = request.sum()
-            .divide(rate, MoneyUtils.SCALE, MoneyUtils.ROUNDING);
-
         ZonedDateTime zoned = request.datetime().atZoneSameInstant(props.timeZone());
-        OffsetDateTime monthStart = monthStartOf(zoned);
-        OffsetDateTime monthEnd = monthStart.plusMonths(1);
 
-        transactionRepository.lockMonth(lockKey(request, monthStart));
+        BigDecimal sumUsd = MoneyUtils.divide(MoneyUtils.scale(request.sum()), rate(request, zoned));
 
-        Limit limit = limitRepository
-            .findEffectiveLimit(
-                request.accountFrom(),
-                request.expenseCategory(),
-                request.datetime()
-            )
-            .orElse(null);
-
-        BigDecimal limitSum = limit != null
-            ? limit.getLimitSum()
-            : props.limit().defaultSum();
-
-        BigDecimal spent = transactionRepository.sumExpensesForPeriod(
-            request.accountFrom(), request.expenseCategory(), monthStart, monthEnd
-        );
-
-        boolean exceeded = spent.add(sumUsd).compareTo(limitSum) > 0;
-
-        Transaction transaction = buildTransaction(request, sumUsd, limit, exceeded);
-
-        return transactionMapper.toTransactionResponse(transactionRepository.save(transaction));
+        return transactionProcessor.record(request, sumUsd, zoned);
     }
 
     /**
-     * Первый день месяца в часовом поясе сервиса: транзакция на границе
-     * полуночи иначе может попасть в соседний месяц.
+     * Курс нулевой или отсутствует — делить на него нельзя, а принять
+     * транзакцию без курса нельзя: сумма в USD попала бы в базу неверной.
      */
-    private OffsetDateTime monthStartOf(ZonedDateTime zoned) {
-        return zoned
-            .with(TemporalAdjusters.firstDayOfMonth())
-            .toLocalDate()
-            .atStartOfDay(props.timeZone())
-            .toOffsetDateTime();
-    }
+    private BigDecimal rate(TransactionRequest request, ZonedDateTime zoned) {
+        BigDecimal rate = exchangeRateService.getRate(request.currencyShortname(), zoned.toLocalDate());
 
-    /**
-     * Остаток лимита общий для (клиент, категория, месяц), поэтому сериализуем
-     * только этот ключ: параллельные транзакции других клиентов ждать не будут.
-     */
-    private String lockKey(TransactionRequest request, OffsetDateTime monthStart) {
-        return request.accountFrom() + ":" + request.expenseCategory() + ":" + monthStart.toLocalDate();
-    }
+        if (rate == null || rate.signum() <= 0) {
+            throw new BadGatewayException(
+                "Exchange rate for " + request.currencyShortname() + " is not available");
+        }
 
-    private Transaction buildTransaction(
-        TransactionRequest request,
-        BigDecimal sumUsd,
-        Limit limit,
-        boolean exceeded) {
-
-        return Transaction.builder()
-            .accountFrom(request.accountFrom())
-            .accountTo(request.accountTo())
-            .currencyShortname(request.currencyShortname())
-            .sum(request.sum())
-            .sumUsd(sumUsd)
-            .expenseCategory(request.expenseCategory())
-            .datetime(request.datetime())
-            .limitExceeded(exceeded)
-            .limit(limit)
-            .build();
+        return rate;
     }
 }
