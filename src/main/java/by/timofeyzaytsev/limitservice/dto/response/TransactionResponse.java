@@ -13,7 +13,6 @@ public record TransactionResponse(
     BigDecimal sum,
     BigDecimal sumUsd,
     ExpenseCategory expenseCategory,
-    OffsetDateTime datetime,
     boolean limitExceeded
 ) {
 
