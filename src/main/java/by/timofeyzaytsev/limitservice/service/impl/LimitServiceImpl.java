@@ -7,7 +7,6 @@ import by.timofeyzaytsev.limitservice.mapper.LimitMapper;
 import by.timofeyzaytsev.limitservice.model.Limit;
 import by.timofeyzaytsev.limitservice.repository.LimitRepository;
 import by.timofeyzaytsev.limitservice.service.LimitService;
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -41,7 +40,7 @@ public class LimitServiceImpl implements LimitService {
         Limit limit = Limit.builder()
             .accountFrom(request.accountFrom())
             .expenseCategory(request.expenseCategory())
-            .limitSum(validateLimitSum(request))
+            .limitSum(request.limitSum())
             .limitDatetime(OffsetDateTime.now(clock))
             .limitCurrencyShortname(appProperties.limit().defaultCurrency())
             .createdAt(OffsetDateTime.now(clock))
@@ -52,9 +51,5 @@ public class LimitServiceImpl implements LimitService {
                 limitRepository
                     .save(limit)
             );
-    }
-
-    private BigDecimal validateLimitSum(LimitRequest request) {
-        return request.limitSum() == null ? appProperties.limit().defaultSum() : request.limitSum();
     }
 }
