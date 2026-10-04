@@ -4,7 +4,9 @@ import by.timofeyzaytsev.limitservice.model.Transaction;
 import by.timofeyzaytsev.limitservice.repository.projection.MonthLimitProjection;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -66,6 +68,37 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
         @Param("monthEnd") OffsetDateTime monthEnd,
         @Param("defaultLimitSum") BigDecimal defaultLimitSum
     );
+
+    /**
+     * Транзакции клиента, превысившие лимит, вместе с лимитом, по которому
+     * превышение зафиксировано.
+     *
+     * <p>Лимит берётся join'ом по {@code limit_id}, а не подзапросом «действующий
+     * на дату»: ссылка сохранена в самой транзакции, поэтому это заведомо тот
+     * лимит, который действовал тогда, и переустановка лимита позже ничего в
+     * ответе не искажает.</p>
+     *
+     * <p>{@code LEFT JOIN FETCH} вместо {@code JOIN}, потому что транзакция без
+     * сохранённой ссылки на лимит остаётся в выдаче, а её лимитовые поля будут
+     * пустыми. Fetch, а не lazy-чтение в маппере: сессия закрывается до
+     * отдачи ответа, вне её lazy-ассоциация недоступна.</p>
+     */
+    @Query("""
+        SELECT t
+        FROM Transaction t
+        LEFT JOIN FETCH t.limit
+        WHERE t.accountFrom = :accountFrom
+          AND t.limitExceeded = true
+        ORDER BY t.datetime ASC
+        """)
+    List<Transaction> findExceededByAccount(@Param("accountFrom") String accountFrom, Pageable pageable);
+
+    /**
+     * Сколько превышений у клиента всего. Считается отдельным запросом, а не
+     * берётся из {@code Page}: Hibernate не умеет строить count-запрос с
+     * {@code JOIN FETCH}, а список превышений клиенту тоже нужен целиком.
+     */
+    long countByAccountFromAndLimitExceededTrue(String accountFrom);
 
     /**
      * Блокирует (клиент, категория, месяц) до конца текущей транзакции,

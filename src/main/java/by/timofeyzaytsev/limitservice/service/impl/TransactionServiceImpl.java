@@ -2,7 +2,11 @@ package by.timofeyzaytsev.limitservice.service.impl;
 
 import by.timofeyzaytsev.limitservice.config.property.AppProperties;
 import by.timofeyzaytsev.limitservice.dto.request.TransactionRequest;
+import by.timofeyzaytsev.limitservice.dto.response.ExceededTransactionResponse;
+import by.timofeyzaytsev.limitservice.dto.response.PageResponse;
 import by.timofeyzaytsev.limitservice.dto.response.TransactionResponse;
+import by.timofeyzaytsev.limitservice.mapper.TransactionMapper;
+import by.timofeyzaytsev.limitservice.repository.TransactionRepository;
 import by.timofeyzaytsev.limitservice.service.ExchangeRateService;
 import by.timofeyzaytsev.limitservice.service.ResolvedRate;
 import by.timofeyzaytsev.limitservice.service.TransactionProcessor;
@@ -10,7 +14,9 @@ import by.timofeyzaytsev.limitservice.service.TransactionService;
 import by.timofeyzaytsev.limitservice.utils.MoneyUtils;
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,6 +31,8 @@ public class TransactionServiceImpl implements TransactionService {
 
     private final ExchangeRateService exchangeRateService;
     private final TransactionProcessor transactionProcessor;
+    private final TransactionRepository transactionRepository;
+    private final TransactionMapper transactionMapper;
     private final AppProperties props;
 
     @Override
@@ -39,5 +47,17 @@ public class TransactionServiceImpl implements TransactionService {
         BigDecimal sumUsd = MoneyUtils.divide(MoneyUtils.scale(request.sum()), resolved.rate());
 
         return transactionProcessor.record(request, sumUsd, zoned, resolved.exchangeRate());
+    }
+
+    /**
+     * Список превышений — только чтение, поэтому транзакция БД и блокировка
+     * месяца тут не нужны. Сортировка по дате задана в запросе, а не здесь.
+     */
+    @Override
+    public PageResponse<ExceededTransactionResponse> findExceeded(String accountFrom, int page, int size) {
+        List<ExceededTransactionResponse> content = transactionMapper.toExceededResponseList(
+            transactionRepository.findExceededByAccount(accountFrom, PageRequest.of(page, size)));
+
+        return new PageResponse<>(content, transactionRepository.countByAccountFromAndLimitExceededTrue(accountFrom));
     }
 }
