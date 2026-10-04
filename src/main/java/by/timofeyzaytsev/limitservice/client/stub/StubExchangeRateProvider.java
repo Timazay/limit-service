@@ -1,6 +1,7 @@
 package by.timofeyzaytsev.limitservice.client.stub;
 
 import by.timofeyzaytsev.limitservice.client.ExchangeRateProvider;
+import by.timofeyzaytsev.limitservice.client.RateQuote;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,16 +21,30 @@ import org.springframework.stereotype.Component;
 public class StubExchangeRateProvider implements ExchangeRateProvider {
 
     private static final BigDecimal KZT_RATE = new BigDecimal("450.50");
-    private static final BigDecimal RUB_RATE = new BigDecimal("90.25");
-    private static final BigDecimal USD_RATE = BigDecimal.ONE;
+    private static final BigDecimal RUB_RATE = new BigDecimal("83.70");
+    private static final BigDecimal BYN_RATE = new BigDecimal("3.01");
+    private static final BigDecimal OTHER_RATE = new BigDecimal("40.33");
 
     @Override
-    public BigDecimal getRate(String currency, LocalDate date) {
-        return switch (currency) {
-            case "USD" -> USD_RATE;
+    public RateQuote fetchQuote(String currencyPair, LocalDate date) {
+        return new RateQuote(rateFor(quote(currencyPair)), null);
+    }
+
+    /**
+     * Курс запрашивается в направлении пары, поэтому у пары {@code USD/XXX}
+     * ответ зависит только от её котируемой валюты.
+     */
+    private BigDecimal rateFor(String quote) {
+        return switch (quote) {
+            case "USD" -> BigDecimal.ONE;
             case "KZT" -> KZT_RATE;
             case "RUB" -> RUB_RATE;
-            default -> new BigDecimal("40.33");
+            case "BYN" -> BYN_RATE;
+            default -> OTHER_RATE;
         };
+    }
+
+    private String quote(String currencyPair) {
+        return currencyPair.substring(currencyPair.indexOf('/') + 1);
     }
 }

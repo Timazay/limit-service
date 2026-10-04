@@ -1,21 +1,21 @@
 package by.timofeyzaytsev.limitservice.client;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-
 /**
- * Провайдер курсов валют.
- * Возвращает курс валюты к USD на указанную дату.
+ * Источник биржевых курсов.
  *
- * Контракт: rate = сколько единиц валюты за 1 USD.
- * Пример: KZT/USD = 450.5 → за 1 USD дают 450.5 KZT.
+ * <p>Провайдер только ходит во внешний API: он не знает про базу и не решает,
+ * брать курс из хранилища или запросить заново. Это разбирает
+ * {@code ExchangeRateService}.</p>
  */
 public interface ExchangeRateProvider {
 
     /**
-     * @param currency валюта (KZT, RUB, ...)
-     * @param date     дата, на которую нужен курс
-     * @return курс к USD (сколько единиц валюты за 1 USD)
+     * Дневные котировки пары в направлении самой пары: для {@code KZT/USD} это
+     * сколько KZT отдают за 1 USD. Провайдер отвечает за приведение курса к
+     * этому направлению, даже если внешний API отдаёт пару наоборот.
+     *
+     * @param currencyPair пара в виде {@code AAA/BBB}
+     * @param date         дата, на которую нужен курс
      */
-    BigDecimal getRate(String currency, LocalDate date);
+    RateQuote fetchQuote(String currencyPair, java.time.LocalDate date);
 }

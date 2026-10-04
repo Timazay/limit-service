@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 
 @Configuration
@@ -25,6 +26,7 @@ public class RetryConfig {
             .multiplier(td.retryMultiplier())
             .maxDelay(td.retryMaxDelay())
             .includes(RestClientException.class)
+            .excludes(HttpClientErrorException.NotFound.class)
             .build();
 
         return new RetryTemplate(policy);
