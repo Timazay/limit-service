@@ -94,7 +94,7 @@ class TransactionServiceImplTest {
     }
 
     @Test
-    void create_ShouldRequestRateForLocalDateInServiceZone() {
+    void create_WhenDateResolved_ShouldRequestRateForLocalDateInServiceZone() {
         givenRate(new BigDecimal("83.70"));
 
         service.create(request("RUB", new BigDecimal("100.00"), DATETIME));
@@ -117,7 +117,7 @@ class TransactionServiceImplTest {
     }
 
     @Test
-    void create_ShouldScaleSumBeforeConversion() {
+    void create_WhenSumHasMoreThanTwoDecimals_ShouldScaleBeforeConversion() {
         // 1.004 / 200.80 = ровно 0.005, и без предварительного округления суммы
         // до двух знаков результат округлился бы вверх до 0.01
         givenRate(new BigDecimal("200.80"));
@@ -147,7 +147,7 @@ class TransactionServiceImplTest {
     }
 
     @Test
-    void findExceeded_ShouldRequestPageOfTransactions() {
+    void findExceeded_WhenPageRequested_ShouldPassPageToRepository() {
         when(transactionRepository.findExceededByAccount(eq(ACCOUNT_FROM), any(Pageable.class)))
             .thenReturn(List.of());
         when(transactionMapper.toExceededResponseList(any())).thenReturn(List.of());
@@ -163,7 +163,7 @@ class TransactionServiceImplTest {
     }
 
     @Test
-    void findExceeded_ShouldReturnTotalCountFromSeparateCountQuery() {
+    void findExceeded_WhenCounted_ShouldReturnTotalFromSeparateCountQuery() {
         when(transactionRepository.findExceededByAccount(eq(ACCOUNT_FROM), any(Pageable.class)))
             .thenReturn(List.of());
         when(transactionMapper.toExceededResponseList(any())).thenReturn(List.of());
@@ -175,7 +175,7 @@ class TransactionServiceImplTest {
     }
 
     @Test
-    void findExceeded_ShouldReturnMappedResponsesOfFoundTransactions() {
+    void findExceeded_WhenTransactionsFound_ShouldReturnMappedResponses() {
         Transaction transaction = Transaction.builder().id(UUID.randomUUID()).build();
         ExceededTransactionResponse mapped = new ExceededTransactionResponse(
             ACCOUNT_FROM, "9999999999", "KZT", new BigDecimal("10000.45"),

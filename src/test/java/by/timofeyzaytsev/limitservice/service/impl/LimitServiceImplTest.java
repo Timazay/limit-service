@@ -82,7 +82,7 @@ class LimitServiceImplTest {
     }
 
     @Test
-    void create_ShouldTakeLimitCurrencyFromConfiguration() {
+    void create_WhenRequestHasNoCurrency_ShouldTakeCurrencyFromConfiguration() {
         saveReturnsArgument();
 
         service.create(request());
@@ -91,7 +91,7 @@ class LimitServiceImplTest {
     }
 
     @Test
-    void create_ShouldCopyClientFieldsFromRequest() {
+    void create_WhenRequestReceived_ShouldCopyClientFieldsFromRequest() {
         saveReturnsArgument();
 
         service.create(request());
@@ -103,7 +103,7 @@ class LimitServiceImplTest {
     }
 
     @Test
-    void create_ShouldNotReadExistingLimitsOfClient() {
+    void create_WhenLimitCreated_ShouldNotReadExistingLimitsOfClient() {
         saveReturnsArgument();
 
         service.create(request());
@@ -132,7 +132,7 @@ class LimitServiceImplTest {
     }
 
     @Test
-    void findAll_ShouldRequestPageSortedByLimitDateDescending() {
+    void findAll_WhenPageRequested_ShouldSortByLimitDateDescending() {
         when(limitRepository.findByAccountFrom(eq(ACCOUNT_FROM), any(Pageable.class)))
             .thenReturn(new PageImpl<>(List.of()));
         when(limitMapper.toResponseList(any())).thenReturn(List.of());
@@ -152,7 +152,7 @@ class LimitServiceImplTest {
     }
 
     @Test
-    void findAll_ShouldReturnTotalCountAlongsideContent() {
+    void findAll_WhenPageIsNotLast_ShouldReturnTotalCountAlongsideContent() {
         Limit first = Limit.builder().id(UUID.randomUUID()).limitSum(new BigDecimal("1000.00")).build();
         Limit second = Limit.builder().id(UUID.randomUUID()).limitSum(new BigDecimal("2000.00")).build();
 
@@ -166,7 +166,7 @@ class LimitServiceImplTest {
     }
 
     @Test
-    void findAll_ShouldReturnMappedContentOfRequestedPage() {
+    void findAll_WhenPageFound_ShouldReturnMappedContentOfRequestedPage() {
         Limit first = Limit.builder().id(UUID.randomUUID()).limitSum(new BigDecimal("1000.00")).build();
         LimitResponse mapped = new LimitResponse(first.getId(), ACCOUNT_FROM, ExpenseCategory.PRODUCT,
             first.getLimitSum(), NOW, "USD");

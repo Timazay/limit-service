@@ -162,7 +162,7 @@ class TransactionProcessorImplTest {
     }
 
     @Test
-    void record_ShouldLockMonthBeforeReadingSpent() {
+    void record_WhenLimitEvaluated_ShouldLockMonthBeforeReadingSpent() {
         recordTransaction(JANUARY_2, new BigDecimal("100.00"),
             month(new BigDecimal("1000.00"), new BigDecimal("900.00"), null));
 
