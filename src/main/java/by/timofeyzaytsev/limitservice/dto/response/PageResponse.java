@@ -1,5 +1,6 @@
 package by.timofeyzaytsev.limitservice.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -12,5 +13,13 @@ import java.util.List;
  * @param content записи текущей страницы
  * @param total   сколько записей всего по запросу, без учёта страницы
  */
-public record PageResponse<T>(List<T> content, long total) {
+@Schema(description = "Страница списка вместе с общим числом записей")
+public record PageResponse<T>(
+    @Schema(description = "Записи текущей страницы")
+    List<T> content,
+
+    @Schema(description = "Сколько записей всего по запросу, без учёта страницы",
+        example = "42")
+    long total
+) {
 }
