@@ -1,0 +1,258 @@
+---
+name: write-test
+description: Use when writing or fixing any test in the limit service. Triggers on Test, @Test, "написать тест", "добавить тест", "покрыть тестами", Mockito, @Mock, AssertJ, "замокать", Clock.fixed, Testcontainers, WireMock, @SpringBootTest, application-test.yml, "юнит-тест", "интеграционный тест".
+---
+
+# Написание теста в limit-service
+
+Общие правила проекта: как называть, где лежит, чем проверяешь, как
+работаешь со временем. Сценарии и граничные случаи для конкретной логики
+живут в профильных скиллах — прежде всего в `write-limit-logic-test`.
+
+## Правило именования — обязательное
+
+```
+<метод>_When<условие>_Should<ожидаемый результат>
+```
+
+Три части, разделённые одиночным подчёркиванием. Внутри частей — только
+CamelCase, без пробелов, кириллицы и знаков препинания.
+
+| Часть | Что это | Пример |
+|---|---|---|
+| до `_` | имя метода прод-класса **дословно** | `record`, `resolve`, `create`, `scale` |
+| `When` | состояние, из-за которого метод ведёт себя необычно | `WhenRemainingIsZero` |
+| `Should` | наблюдаемый результат | `ShouldNotExceedLimit` |
+
+Имя метода берётся дословно, потому что тест — документация к методу:
+`record_...` относится к `TransactionProcessorImpl.record`, а
+`monthStartOf_...` — к приватному `monthStartOf`, который проверяется
+через публичный `record`.
+
+Примеры по реальным классам проекта:
+
+```java
+scale_WhenValueHasMoreThanTwoDecimals_ShouldRoundHalfUp
+divide_WhenFractionIsRepeating_ShouldRoundToTwoDecimals
+record_WhenRemainingIsZero_ShouldNotExceedLimit
+record_WhenSpentPlusTransactionIsAboveLimit_ShouldMarkExceeded
+record_WhenMonthLimitIsNotInstalled_ShouldUseDefaultLimitSum
+record_WhenLimitIdIsNull_ShouldNotReferenceAnyLimit
+record_WhenTransactionIsLastDayOfMonth_ShouldResolveLimitsOfThatMonth
+resolve_WhenCurrencyIsUsd_ShouldReturnRateOneAndNoStoredRate
+resolve_WhenCloseIsAbsent_ShouldFallBackToPreviousClose
+resolve_WhenStoredRateIsMissing_ShouldCallProviderAndStoreRate
+resolve_WhenProviderReturnsNonPositiveRate_ShouldThrowBadGatewayException
+create_WhenRequestHasNoDate_ShouldSetLimitDatetimeFromClock
+findAll_WhenClientHasLimits_ShouldReturnNewestFirstWithTotalCount
+```
+
+Антипримеры — такие тесты не пишутся:
+
+| Имя | Почему неверно |
+|---|---|
+| `testRecord()` | нет ни условия, ни результата |
+| `recordTest()` | то же |
+| `shouldExceed_whenLimitReached()` | `should` в начале, порядок сегментов перепутан |
+| `record_WhenLimit_ShouldTrue()` | результат без конкретики, не читается как утверждение |
+| `record1()`, `record2()` | порядковые номера ничего не сообщают о случае |
+
+## Где лежит тест и как называется класс
+
+Каталог `src/test/java` зеркалит пакеты `src/main/java` от корня
+`by.timofeyzaytsev.limitservice`.
+
+| Тип теста | Имя класса | Что поднимает |
+|---|---|---|
+| Юнит | `<Класс>Test` | ничего, только Mockito |
+| Интеграционный с БД | `<Класс>IT` | `@SpringBootTest` + Testcontainers |
+| Сквозной по HTTP | `<Сценарий>ApiIT` | `@SpringBootTest(RANDOM_PORT)` + HTTP-клиент |
+| Валидация DTO | `<Класс>ValidationTest` | `@WebMvcTest(<Контроллер>.class)` |
+
+Примеры: `MoneyUtilsTest`, `TransactionProcessorImplTest`,
+`LimitServiceImplTest`, `TransactionRepositoryIT`, `ExceededTransactionsApiIT`.
+
+Суффикс `IT` для интеграционных — не формальность: они требуют Docker,
+и потому запускаются фазой `verify`, а не `test`.
+
+## AssertJ и Mockito
+
+Только AssertJ. JUnit-овские `assertEquals`, `assertTrue` и `fail` в
+проекте не используются — причин несколько, и одинаковых по смыслу
+сообщений об ошибке тоже.
+
+```java
+assertThat(response.limitExceeded()).isTrue();
+assertThat(month.getLimitSum()).isEqualByComparingTo(new BigDecimal("1000.00"));
+```
+
+`isEqualTo` для `BigDecimal` **не подходит**: `1000.0` и `1000.00` равны
+по числу, но не по `equals`. Деньги сравнивай через
+`isEqualByComparingTo`, либо явно через `MoneyUtils.SCALE`.
+
+Правила:
+
+- **Один `@Test` — одна причина падения.** Несколько `assertThat`
+  внутри одного теста допустимы, только если они описывают одно
+  наблюдение: «остаток посчитан неверно» — это про `limitSum`, `spent`
+  и итоговый флаг сразу.
+- **Не мокай то, что не коллаборирует.** `MoneyUtils`, `BigDecimal`,
+  record'ы (`TransactionRequest`, `RateQuote`, `ResolvedRate`) и enums
+  создаются по-настоящему. Мок на record'е бесполезен — у него нет
+  поведения, которое можно подменить.
+- **Не мокай то, что тест не проверяет.** Коллаборатор, чьё значение
+  не влияет на исход, мокать незачем: лишний `@Mock` создаёт
+  впечатление покрытия, которого нет.
+- **Репозиторий мокается всегда**, когда проверяется сервис.
+  Настоящий репозиторий требует БД — это уже интеграционный тест.
+- **`verify` — на конкретный вызов.** `verifyNoMoreInteractions()`
+  превращает тест в хрупкий: он падает от любого безобидного нового
+  вызова. Используй его, только если «больше ничего не вызывалось» —
+  часть контракта.
+- **`InOrder` — только там, где порядок часть контракта.** Пример:
+  `lockMonth` обязан вызываться раньше `resolveMonthLimit`
+  (`TransactionProcessorImpl.record`), иначе параллельные запросы
+  прочтут один остаток. Порядок вызовов маппера проверять не надо.
+
+Внедрение зависимостей в тесте:
+
+```java
+@ExtendWith(MockitoExtension.class)
+class TransactionProcessorImplTest {
+
+    @Mock private TransactionRepository transactionRepository;
+    @Mock private LimitRepository limitRepository;
+    @Mock private TransactionMapper transactionMapper;
+
+    private TransactionProcessor processor;
+
+    @BeforeEach
+    void setUp() {
+        processor = new TransactionProcessorImpl(
+            transactionRepository, limitRepository, transactionMapper, props(), fixedClock());
+    }
+}
+```
+
+Предпочитай ручной `new` в `@BeforeEach` вместо `@InjectMocks`:
+конструкторы в проекте генерирует Lombok (`@RequiredArgsConstructor`),
+и `@InjectMocks` подбирает аргументы по типам — при двух зависимостях
+одного типа он выберет наугад, молчаливый поломка теста вместо ошибки
+компиляции.
+
+## Время — только через Clock
+
+**Никогда** `OffsetDateTime.now()`, `LocalDate.now()` и
+`ZonedDateTime.now()` в тесте. Границы месяца считаются в
+`app.time-zone`, поэтому тест с реальным временем нестабилен: он
+развалится в полночь первого числа и не воспроизведёт сценарий из
+задания.
+
+Зона в тестах — `ZoneId.of("Asia/Almaty")`, дефолт из
+`application.yml`.
+
+```java
+private static final ZoneId ZONE = ZoneId.of("Asia/Almaty");
+Clock fixedClock = Clock.fixed(Instant.parse("2022-01-11T06:00:00Z"), ZONE);
+```
+
+### Ловушка: подмена одного `Clock` не подменяет зону
+
+`TransactionProcessorImpl` принимает **и** `Clock`, **и** `AppProperties`,
+и границы месяца считает по `props.timeZone()`
+(`TransactionProcessorImpl.monthStartOf`), а не по часам. `@MockitoBean`
+или `@Mock` на `Clock` двигает момент времени, но оставляет зону
+`monthStartOf` системной, и на стыке месяца тест разойдётся с
+намерением.
+
+В юнит-тесте с настоящим конструктором подставляй **оба**: `Clock` для
+момента и настоящий `AppProperties` с нужной зоной.
+
+```java
+private static AppProperties props() {
+    return new AppProperties(
+        ZoneId.of("Asia/Almaty"),
+        new LimitProperties(new BigDecimal("1000.00"), "USD"),
+        null);
+}
+
+private static AppProperties props(ZoneId zone, BigDecimal defaultSum) {
+    return new AppProperties(
+        zone,
+        new LimitProperties(defaultSum, "USD"),
+        null);
+}
+```
+
+`AppProperties` — record, третий компонент (`exchangeRate`) в
+юнит-тестах лимитов не используется, поэтому `null` достаточно.
+Дефолтный лимит и валюта лимита в тестах лимитов тоже берутся отсюда,
+а не из `application.yml`: иначе тест поедет, если дефолт поменяют.
+
+`@PrePersist` во всех трёх сущностях вызывает `OffsetDateTime.now()`
+напрямую. Это не мешает: сервисы сами проставляют `createdAt` до
+сохранения, и `@PrePersist` проверка не срабатывает.
+
+## Зависимости и профили
+
+Тестовые зависимости — в `pom.xml`, `<scope>test</scope>`, версиями из
+BOM `spring-boot-dependencies` (`spring-boot-starter-parent` уже его
+подключает). Версию в `<version>` пиши **только** если артефакта в BOM
+нет.
+
+Управляются BOM и версию указывать не нужно:
+
+- `org.springframework.boot:spring-boot-testcontainers`
+- `org.testcontainers:testcontainers-postgresql` — обрати внимание на
+  имя
+- `org.testcontainers:testcontainers-junit-jupiter`
+
+**Ловушка, из-за которой тест не компилируется:** Boot 4.1.1 управляет
+Testcontainers **2.0.5**, а в 2.x модули переименованы — координаты
+`org.testcontainers:postgresql` и `org.testcontainers:junit-jupiter`
+больше не существуют. Префикс `testcontainers-` обязателен. Версии
+1.x, на которые есть примеры в интернете, здесь не подойдут.
+
+Не управляется BOM, версию задавай явно:
+
+- `org.wiremock:wiremock` — 3.13.2. Если в тестах нужен WireMock на
+  Jetty 12, бери `org.wiremock:wiremock-jetty12` той же версии;
+  приложение работает на Tomcat, так что для тестов хватает обычного
+  `wiremock`.
+
+Одна зависимость — одно объявление. В `pom.xml` не должно быть двух
+блоков `spring-boot-starter-test`: Maven возьмёт первый, а второй будет
+молчаливым дублем, который при добавлении чего-то в один из них даст
+непонятную ошибку.
+
+Тестовые профили:
+
+- `src/test/resources/application-test.yml` — заглушка провайдера
+  курсов: `app.exchange-rate.provider: stub`. Без этого тестам потребуется
+  переменная окружения `TWELVEDATA_API_KEY`, потому что бины
+  конфигурации читают её при старте контекста в любом режиме
+  (см. `add-exchange-rate-provider`).
+- Интеграционные тесты: PostgreSQL в Testcontainers и
+  `@ServiceConnection`, без ручного `datasource.url`. Liquibase
+  отработает на поднятой БД сам — свою схему в тестах не создавай.
+- `./mvnw verify` — только он запускает тесты с БД. `./mvnw test`
+  достаточно для юнитов.
+
+## Чего делать не надо
+
+- **Не поднимай `@SpringBootTest` ради арифметики.** `MoneyUtils` и
+  расчёт флага проверяются юнитом за миллисекунды; контекст Spring
+  поднимается секундами и тянет БД.
+- **Не тестируй Spring-бин ради Spring-бина.** `ClockConfig` и
+  `ValidationConfig` проверяются фактом работы в интеграционном тесте;
+  отдельного `ClockConfigTest` не нужно.
+- **Не дублируй `write-limit-logic-test`.** Сценарии из таблицы задания,
+  четыре края лимита и моки `MonthLimitProjection` описаны там. Здесь
+  общие правила.
+- **Не пиши тест на `equals`/`hashCode` сущностей.** В проекте они
+  генерируются Lombok и не несут доменной логики; ценность теста
+  здесь нулевая.
+- **Не подставляй `datetime` через `LocalDateTime` без зоны.**
+  `TransactionRequest.datetime` — `OffsetDateTime`, и расчёт месяца
+  зависит от зоны: `2022-02-01T00:00:00+06:00` в Алматы это
+  31 января.
