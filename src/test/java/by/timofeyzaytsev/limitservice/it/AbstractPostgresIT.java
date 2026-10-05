@@ -1,4 +1,4 @@
-package by.timofeyzaytsev.limitservice;
+package by.timofeyzaytsev.limitservice.it;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;

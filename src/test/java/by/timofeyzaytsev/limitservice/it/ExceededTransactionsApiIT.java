@@ -1,4 +1,4 @@
-package by.timofeyzaytsev.limitservice;
+package by.timofeyzaytsev.limitservice.it;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
