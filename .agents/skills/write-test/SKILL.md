@@ -226,28 +226,128 @@ Testcontainers **2.0.5**, а в 2.x модули переименованы — 
 
 Не управляется BOM, версию задавай явно:
 
-- `org.wiremock:wiremock` — 3.13.2. Если в тестах нужен WireMock на
-  Jetty 12, бери `org.wiremock:wiremock-jetty12` той же версии;
-  приложение работает на Tomcat, так что для тестов хватает обычного
-  `wiremock`.
+- `org.wiremock:wiremock-standalone` — 3.13.2.
+
+**Ловушка, из-за которой падает даже старт WireMock.** С версии 3.x HTTP-сервер
+вынесен из основного артефакта: голый `wiremock` не содержит реализации и
+даёт `FatalStartupException` про отсутствие `HttpServerFactory`, а
+`wiremock-jetty12` падает с `NoSuchMethodError` на
+`Environment.ensure(String)` — Boot управляет Jetty 12.1.12, где сигнатура
+`ensure(String, Class)`, а WireMock ждёт более новую. `wiremock-standalone`
+шивает Jetty внутрь и не конфликтует с управлением версиями Boot. Пакет
+классов при этом прежний: `com.github.tomakehurst.wiremock`.
 
 Одна зависимость — одно объявление. В `pom.xml` не должно быть двух
 блоков `spring-boot-starter-test`: Maven возьмёт первый, а второй будет
 молчаливым дублем, который при добавлении чего-то в один из них даст
 непонятную ошибку.
 
+## Фазы сборки
+
+`maven-failsafe-plugin` с `<includes>**/*IT.java</includes>` — суффикс `IT`
+уезжает в фазу `verify`. Поэтому:
+
+- `./mvnw test` — только юниты, Docker не нужен, секунды
+- `./mvnw verify` — плюс тесты с БД и внешним API
+
+Это не формальность, а требование задания: полный набор должен запускаться
+стандартной командой сборки. Разносить по фазам выгодно ещё и тем, что
+быстрый цикл обратной связи не ждёт контейнер.
+
+## Поднятие БД в тестах
+
+Общий контейнер живёт в абстрактном базовом классе — один на прогон,
+Spring переиспользует один `ApplicationContext`:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
+@Testcontainers
+public abstract class AbstractPostgresIT {
+
+    @Container
+    @ServiceConnection
+    protected static final PostgreSQLContainer<?> POSTGRES =
+        new PostgreSQLContainer<>("postgres:17-alpine");
+}
+```
+
+`@ServiceConnection` подставляет `datasource.url` сам — ручной
+`application-test.yml` с адресом БД не нужен и был бы неправдой. Схему
+накатывает Liquibase при старте контекста.
+
+**Ловушка, ломающая сборку с нуля:** в `pom.xml` у executions компилятора
+объявлен `annotationProcessorPaths`, и без `<proc>full</proc>` процессоры на
+JDK 21 не запускаются. MapStruct молча не создаёт `*MapperImpl`, сборка
+проходит, а контекст падает на `No qualifying bean of type 'LimitMapper'`.
+Ошибка выглядит как проблема бина, хотя это проблема сборки.
+
+## Внешний API в тестах
+
+WireMock поднимай **в статическом инициализаторе**, а не в `@BeforeAll`:
+контекст Spring собирается до before-all методов, а адрес сервера нужен уже
+в `@DynamicPropertySource`.
+
+```java
+private static final WireMockServer WIRE_MOCK = startWireMock();
+
+@DynamicPropertySource
+static void rateProperties(DynamicPropertyRegistry registry) {
+    registry.add("app.exchange-rate.twelvedata.base-url",
+        () -> "http://localhost:" + WIRE_MOCK.port());
+}
+```
+
+Один стаб покрывает много дат: провайдер берёт последний бар, не позже
+запрошенной даты, поэтому ответ сразу содержит весь нужный диапазон, и
+каждая транзакция не требует своего стаба.
+
+Провайдер в тесте остаётся `twelvedata`, а не `stub` — иначе замоканный
+внешний API не будет вызван и тест ничего не проверит. `api-key` при этом
+обязателен: `RestClientConfig` создаёт бин без условия и читает это поле при
+старте контекста (см. `add-exchange-rate-provider`).
+
+## Обращение к своему API из теста
+
+`TestRestTemplate` в Spring Boot 4 **отсутствует**. Рабочий вариант —
+`RestClient`, он уже в зависимостях:
+
+```java
+rest = RestClient.builder().baseUrl("http://localhost:" + port).build();
+```
+
+Ответ лучше разбирать типизированным:
+
+```java
+rest.get().uri("/api/v1/transactions/exceeded?accountFrom={a}", ACCOUNT_FROM)
+    .retrieve()
+    .toEntity(new ParameterizedTypeReference<PageResponse<ExceededTransactionResponse>>() {});
+```
+
+Не разбирай ответ в `Map`: JSON-число `1000.00` придёт как `Double`, и
+`isEqualTo(new BigDecimal("1000.00"))` упадёт при верном ответе сервера.
+
+**Ловушка на датах:** Jackson клиента нормализует смещение при разборе
+`OffsetDateTime` в UTC, и полночь `2022-01-01T00:00+06:00` станет 31
+декабря. Сравнивай моменты, а не локальные даты:
+
+```java
+assertThat(response.limitDatetime().toInstant())
+    .isEqualTo(expectedOffsetDateTime.toInstant());
+```
+
+Смещение в JSON при этом остаётся правильным — расходится именно разбор на
+клиенте.
+
 Тестовые профили:
 
-- `src/test/resources/application-test.yml` — заглушка провайдера
-  курсов: `app.exchange-rate.provider: stub`. Без этого тестам потребуется
-  переменная окружения `TWELVEDATA_API_KEY`, потому что бины
-  конфигурации читают её при старте контекста в любом режиме
-  (см. `add-exchange-rate-provider`).
-- Интеграционные тесты: PostgreSQL в Testcontainers и
-  `@ServiceConnection`, без ручного `datasource.url`. Liquibase
-  отработает на поднятой БД сам — свою схему в тестах не создавай.
-- `./mvnw verify` — только он запускает тесты с БД. `./mvnw test`
-  достаточно для юнитов.
+- `src/test/resources/application-test.yml` — профиль `test`, подключается
+  аннотацией `@ActiveProfiles("test")`. Провайдера курсов в нём оставляем
+  `twelvedata`, а не `stub`, если тест проверяет работу с внешним API.
+- Ключ `api-key` в тестовом профиле обязателен в любом случае: бины
+  конфигурации читают его при старте контекста, даже когда провайдер
+  выключен, и без него контекст не поднимется (см.
+  `add-exchange-rate-provider`).
 
 ## Чего делать не надо
 
