@@ -31,7 +31,7 @@ app:
     default-sum: 1000.00
     default-currency: USD
   exchange-rate:
-    provider: twelvedata   # stub | twelvedata
+    provider: ${APP_EXCHANGE_RATE_PROVIDER:twelvedata}   # stub | twelvedata
     twelvedata:
       base-url: https://api.twelvedata.com
       api-key: ${TWELVEDATA_API_KEY}
