@@ -1,0 +1,21 @@
+spring:
+  # ApplicationContext поднимается один раз на весь прогон интеграционных тестов,
+  # профильные настройки не меняют.
+  jpa:
+    open-in-view: false
+
+app:
+  time-zone: Asia/Almaty
+  exchange-rate:
+    # Именно twelvedata, а не stub: сквозной тест обязан ходить в замоканный
+    # внешний API, а заглушка его не вызывает.
+    provider: twelvedata
+    twelvedata:
+      # base-url подставляется в тесте на порт WireMock.
+      # api-key обязателен: RestClientConfig создаёт бин безусловно и читает это
+      # поле при старте контекста, даже когда провайдер выключен.
+      api-key: test-key
+      max-retries: 0
+      retry-delay: 100ms
+      retry-multiplier: 1.0
+      retry-max-delay: 100ms
