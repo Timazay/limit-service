@@ -18,6 +18,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.validation.method.ParameterValidationResult;
@@ -93,6 +94,27 @@ public class GlobalExceptionHandler {
         problemDetail.setInstance(instanceUri(request));
 
         return ResponseEntity.badRequest().body(problemDetail);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ProblemDetail> handleUnreadableBody(
+            HttpMessageNotReadableException ex,
+            WebRequest request) {
+
+        String detail = unreadableDetail(ex);
+
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+        problemDetail.setTitle("Malformed request body");
+        problemDetail.setProperty("errors", new ErrorResponseDto(detail));
+        problemDetail.setInstance(instanceUri(request));
+
+        return ResponseEntity.badRequest().body(problemDetail);
+    }
+
+    private static String unreadableDetail(HttpMessageNotReadableException ex) {
+        String cause = ex.getMostSpecificCause().getMessage();
+
+        return StringUtils.hasText(cause) ? cause : "Required request body is missing or malformed";
     }
 
     @ExceptionHandler(ApiException.class)
