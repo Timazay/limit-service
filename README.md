@@ -71,14 +71,14 @@ export TWELVEDATA_API_KEY=<ключ>   # либо APP_EXCHANGE_RATE_PROVIDER=stu
 
 ## Переменные окружения
 
-| Переменная | По умолчанию | Назначение |
-|---|---|---|
-| `DB_USERNAME` | `postgres` | Пользователь БД |
-| `DB_PASSWORD` | `postgres` | Пароль БД |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5434/limit_db` | Адрес БД; в compose переопределяется на хост контейнера |
-| `TIME_ZONE` | `Asia/Almaty` | Часовой пояс, в котором считаются границы месяца и выводятся даты |
-| `APP_EXCHANGE_RATE_PROVIDER` | `twelvedata` | Источник курсов: `stub` или `twelvedata` |
-| `TWELVEDATA_API_KEY` | — | Ключ внешнего API. Формально обязателен даже при `stub` |
+| Переменная | По умолчанию                                | Назначение |
+|---|---------------------------------------------|---|
+| `DB_USERNAME` | `postgres`                                  | Пользователь БД |
+| `DB_PASSWORD` | `postgres`                                  | Пароль БД |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/limit_db` | Адрес БД; в compose переопределяется на хост контейнера |
+| `TIME_ZONE` | `Asia/Almaty`                               | Часовой пояс, в котором считаются границы месяца и выводятся даты |
+| `APP_EXCHANGE_RATE_PROVIDER` | `twelvedata`                                | Источник курсов: `stub` или `twelvedata` |
+| `TWELVEDATA_API_KEY` | —                                           | Ключ внешнего API. Формально обязателен даже при `stub` |
 
 ## Часовой пояс и границы месяца
 

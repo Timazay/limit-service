@@ -3,7 +3,7 @@ spring:
     name: Limit service
 
   datasource:
-    url: jdbc:postgresql://localhost:5434/limit_db
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/limit_db}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
 
