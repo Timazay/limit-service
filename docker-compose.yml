@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: limit_db
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - limit-db:/var/lib/postgresql/data
+    healthcheck:
+      # Сервис поднимается раньше приложения, иначе старт упадёт на отказе
+      # подключения к базе.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d limit_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Адрес БД внутри сети compose отличается от localhost из application.yml,
+      # поэтому переопределяем его через переменную окружения.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/limit_db
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      TIME_ZONE: ${TIME_ZONE:-Asia/Almaty}
+      # По умолчанию заглушка курсов: без ключа TwelveData сервис запустится,
+      # но каждый запрос к нему будет платным и медленным.
+      APP_EXCHANGE_RATE_PROVIDER: ${APP_EXCHANGE_RATE_PROVIDER:-stub}
+      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY}
+    ports:
+      - "8080:8080"
+
+volumes:
+  limit-db:
