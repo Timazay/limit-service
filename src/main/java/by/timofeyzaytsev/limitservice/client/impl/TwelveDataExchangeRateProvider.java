@@ -151,11 +151,15 @@ public class TwelveDataExchangeRateProvider implements ExchangeRateProvider {
     }
 
     /**
-     * TwelveData отвечает по биржевой конвенции: {@code AAA/BBB} — это сколько
-     * BBB за 1 AAA. Мы просим {@code AAA/USD} и получаем USD за одну единицу
-     * AAA, а контракт сервиса требует обратного — сколько AAA за 1 USD. Ответ
-     * всегда нужно инвертировать; определять это по symbol из ответа нельзя,
-     * TwelveData возвращает его ровно таким, каким его запросили.
+     * Направление пары. TwelveData отвечает по биржевой конвенции:
+     * {@code AAA/BBB} — это сколько BBB за одну AAA. Мы просим {@code USD/XXX} и
+     * получаем XXX на доллар, то есть ровно то, что требует контракт сервиса,
+     * поэтому значение переиспользуется как есть.
+     *
+     * <p>Определять направление по {@code symbol} из ответа нельзя: TwelveData
+     * возвращает его ровно таким, каким его запросили. Пара собирается в
+     * {@code ExchangeRateServiceImpl} как {@code USD/XXX} ещё и потому, что
+     * {@code XXX/USD} TwelveData не знает и отвечает 404.</p>
      */
     private RateQuote toContractRate(String currencyPair, TwelveDataTimeSeriesResponse.Value bar) {
         BigDecimal close = checked(currencyPair, bar.close());
