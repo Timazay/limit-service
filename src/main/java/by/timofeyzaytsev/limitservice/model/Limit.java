@@ -51,6 +51,13 @@ public class Limit {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /**
+     * Страховка для путей, где {@code createdAt} не проставлен сервисом: колонка
+     * в базе NOT NULL, и забытый timestamp лучше дозаполнить здесь, чем упасть
+     * на вставке. Время в приложении не читается иначе, поэтому сервисы всегда
+     * задают поле сами из бина {@code Clock}, и в приложении этот метод не
+     * срабатывает. Тогда timestamp будет в зоне сервиса, а не JVM.
+     */
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
