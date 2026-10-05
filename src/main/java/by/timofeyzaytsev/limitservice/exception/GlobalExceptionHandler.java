@@ -37,44 +37,12 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
-/**
- * Renders failures as RFC 9457 problem documents.
- *
- * <p>Scope is deliberately narrow. Only two failures are mapped explicitly:
- * constraint violations on controller method parameters, and business exceptions raised by
- * the service layer. Everything else is left alone — Spring's own MVC failures carry their
- * status and body in an {@link ErrorResponse}, and unexpected failures are converted by the
- * catch-all. Adding more handlers here should be driven by an endpoint that actually rejects
- * such a request, not by the length of the exception list.</p>
- *
- * <p>Spring Boot's {@code ProblemDetailsExceptionHandler} is registered at {@code @Order(0)},
- * so this advice is ordered {@code -1} to be consulted first; otherwise the framework handler
- * would win and the custom body below would never be produced.</p>
- *
- * <p>The {@code instance} member is set from the request URI, which lets a client
- * correlate a failure with the exact call it made.</p>
- *
- * <p>The {@code type} member is left unset: there is no published documentation page to
- * reference, and an invented URI would be worse than none. RFC 9457 treats an absent
- * {@code type} as {@code about:blank}. Clients should key on {@code title} and
- * {@code detail}, which are always present.</p>
- */
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /**
-     * A constraint on a controller method parameter was violated, for example
-     * {@code @Min(0) int page} on a {@code @RequestParam}.
-     *
-     * <p>This is a separate mechanism from {@code @Valid @RequestBody}: Spring validates
-     * annotated method arguments itself and reports failures as
-     * {@link HandlerMethodValidationException}. Without a handler for it the framework answers
-     * with a generic {@code "Validation Failure"} detail and no field breakdown, so this is the
-     * one validation case the API can currently produce.</p>
-     */
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ProblemDetail> handleMethodParameterValidation(
             HandlerMethodValidationException ex,
@@ -83,8 +51,6 @@ public class GlobalExceptionHandler {
         Map<String, List<String>> violations = new LinkedHashMap<>();
         ex.visitResults(new ViolationCollector(violations));
 
-        // Cross-parameter constraints (for example @PasswordMatches) are not bound to a single
-        // field, so they are reported under a single key rather than mixed in with field errors.
         List<String> crossParameterMessages = ex.getCrossParameterValidationResults().stream()
                 .map(MessageSourceResolvable::getDefaultMessage)
                 .toList();
@@ -95,14 +61,6 @@ public class GlobalExceptionHandler {
         return validationProblem(violations, request);
     }
 
-    /**
-     * The same validation applied to a {@code @Valid @RequestBody} argument. Spring reports
-     * these as field errors and would otherwise answer with a bare
-     * {@code "Invalid request content."} detail, listing none of the offending fields.
-     *
-     * <p>Keyed by field name, the same as for method parameters, so a client parses one
-     * shape regardless of which argument was rejected.</p>
-     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ProblemDetail> handleRequestBodyValidation(
             MethodArgumentNotValidException ex,
@@ -113,8 +71,6 @@ public class GlobalExceptionHandler {
                 .computeIfAbsent(error.getField(), key -> new ArrayList<>())
                 .add(error.getDefaultMessage()));
 
-        // Field-level constraints cannot catch everything: a constraint written on the record
-        // itself is reported without a field, and would otherwise be dropped silently.
         ex.getBindingResult().getGlobalErrors().forEach(error -> violations
                 .computeIfAbsent(error.getObjectName(), key -> new ArrayList<>())
                 .add(error.getDefaultMessage()));
@@ -122,10 +78,6 @@ public class GlobalExceptionHandler {
         return validationProblem(violations, request);
     }
 
-    /**
-     * Renders collected violations as one 400 document: a readable {@code detail} for a
-     * human and a machine-readable {@code errors} member for the client.
-     */
     private ResponseEntity<ProblemDetail> validationProblem(
             Map<String, List<String>> violations,
             WebRequest request) {
@@ -143,10 +95,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(problemDetail);
     }
 
-    /**
-     * Business exceptions: everything extending {@link ApiException} already carries
-     * a fully built {@link ProblemDetail}, so it only needs the {@code instance} member.
-     */
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ProblemDetail> handleApiException(ApiException ex, WebRequest request) {
         ProblemDetail problemDetail = ex.getBody();
@@ -161,19 +109,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ex.getStatusCode()).body(problemDetail);
     }
 
-    /**
-     * Handles everything this advice does not map explicitly.
-     *
-     * <p>Two cases matter. Spring's own MVC failures already carry the right status and body in
-     * their {@link ErrorResponse} implementation, so they are passed through with only
-     * {@code instance} filled in. Anything else is genuinely unexpected and becomes a 500 with a
-     * {@code traceId} and no internal details, so an unexpected failure never leaks internals to
-     * the caller.</p>
-     *
-     * <p>The distinction matters: because this advice runs before Spring Boot's handler,
-     * collapsing every unmatched exception into a 500 would turn a plain 404 or 415 into a server
-     * error.</p>
-     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleUnexpected(Exception ex, HttpServletRequest request) {
         if (ex instanceof ErrorResponse errorResponse) {
@@ -198,12 +133,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
 
-    /**
-     * Collects violations keyed by the name the client actually sent, not by the Java
-     * parameter name: {@code @RequestParam(name = "page")} binds to {@code page} even when the
-     * parameter itself is called something else. Falls back to the declared parameter name,
-     * which requires {@code -parameters} in the compiler configuration.
-     */
     private static final class ViolationCollector implements HandlerMethodValidationException.Visitor {
 
         private final Map<String, List<String>> violations;
@@ -289,11 +218,6 @@ public class GlobalExceptionHandler {
         }
     }
 
-    /**
-     * Builds the {@code instance} member from the request path, so a client can correlate
-     * a failure with the exact call it made. Falls back to {@code about:blank} for the
-     * rare case when the request is not servlet based.
-     */
     private URI instanceUri(WebRequest request) {
         if (request instanceof ServletWebRequest servletWebRequest) {
             return URI.create(servletWebRequest.getRequest().getRequestURI());
